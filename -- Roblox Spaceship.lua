@@ -984,104 +984,91 @@ local function CreateSpaceship(spawnLocation)
 		return true
 	end
 
-	-- ฟังก์ชั่นที่สร้างยานอวกาศ
-	function CreateSpaceshipManager()
-		local spaceshipManager = {}
-		spaceshipManager.Spaceships = {}
+--[[
+Name: Roblox Spaceship Script
+Author: chxmp001 (modified)
+Description: Script for spawning a spaceship that players spawn into directly and persists when players leave
+]]
 
-		-- ฟังก์ชั่นที่สร้างยานอวกาศใหม่
-		function spaceshipManager:CreateSpaceship(player, spawnLocation)
-			if not spawnLocation then
-				spawnLocation = CFrame.new(0, 50, 0)
-			end
+	local Players = game:GetService("Players")
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-			local spaceship = CreateSpaceship(spawnLocation)
-			spaceship.Model.Parent = workspace
-			spaceship.Owner = player
+	local SpaceshipModel = game:GetService("ServerStorage"):WaitForChild("Spaceship")
+	local SpaceshipFolder = workspace:FindFirstChild("Spaceships") or Instance.new("Folder")
+	SpaceshipFolder.Name = "Spaceships"
+	SpaceshipFolder.Parent = workspace
 
-			table.insert(self.Spaceships, spaceship)
+	-- Store player-spaceship associations
+	local PlayerSpaceships = {}
 
-			return spaceship
+	-- Create a remote event for spawning spaceships
+	local SpawnSpaceshipEvent = Instance.new("RemoteEvent")
+	SpawnSpaceshipEvent.Name = "SpawnSpaceship"
+	SpawnSpaceshipEvent.Parent = ReplicatedStorage
+
+	-- Function to spawn a spaceship for a player
+	local function SpawnSpaceship(player)
+		-- Check if player already has a spaceship
+		if PlayerSpaceships[player.UserId] then
+			return PlayerSpaceships[player.UserId]
 		end
 
-		-- ฟังก์ชั่นที่ลบยานอวกาศ
-		function spaceshipManager:DestroySpaceship(spaceship)
-			for i, ship in ipairs(self.Spaceships) do
-				if ship == spaceship then
-					table.remove(self.Spaceships, i)
-					spaceship:Destroy()
-					break
-				end
-			end
-		end
+		-- Clone the spaceship model
+		local spaceship = SpaceshipModel:Clone()
 
-		-- ฟังก์ชั่นที่หายานอวกาศของผู้เล่น
-		function spaceshipManager:GetPlayerSpaceship(player)
-			for _, spaceship in ipairs(self.Spaceships) do
-				if spaceship.Owner == player then
-					return spaceship
-				end
-			end
-			return nil
-		end
+		-- Set up the spaceship properties
+		spaceship.Name = player.Name .. "'s Spaceship"
+		spaceship.Parent = SpaceshipFolder
 
-		return spaceshipManager
+		-- Store the spaceship reference with player's ID
+		PlayerSpaceships[player.UserId] = spaceship
+
+		-- Return the spaceship
+		return spaceship
 	end
 
-	-- ฟังก์ชั่นที่สร้างยานอวกาศสำหรับผู้เล่น
+	-- Function to handle player spawning
 	local function onPlayerAdded(player)
-		-- สร้างคำสั่งที่ใช้ในการสร้างยานอวกาศ
-		local function onChatted(message)
-			if message:lower() == "/spaceship" then
-				local character = player.Character
-				if character and character:FindFirstChild("HumanoidRootPart") then
-					local spawnLocation = character.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
-					local spaceship = spaceshipManager:CreateSpaceship(player, spawnLocation)
-					spaceship:Activate(player)
+		-- Create a spaceship for the player
+		local spaceship = SpawnSpaceship(player)
 
-					-- แสดงข้อความที่บอกวิธีการควบคุม
-					local hint = Instance.new("Hint")
-					hint.Text = "ควบคุมยานอวกาศ: W,A,S,D,Space,Shift = เคลื่อนที่, ลูกศร = หมุน, F = ขาลงจอด, R = ยิงอาวุธ, T = ยิงขีปนาวุธ, B = Boost, V = โล่ป้องกัน"
-					hint.Parent = player.PlayerGui
-
-					delay(10, function()
-						if hint then
-							hint:Destroy()
-						end
-					end)
-				end
-			end
-		end
-
-		player.Chatted:Connect(onChatted)
-	end
-
-	-- ฟังก์ชั่นที่ทำงานเมื่อเกมเริ่ม
-	local function onGameStart()
-		-- สร้างตัวจัดการยานอวกาศ
-		spaceshipManager = CreateSpaceshipManager()
-
-		-- เพิ่มผู้เล่นที่เข้ามาในเกม
-		for _, player in ipairs(Players:GetPlayers()) do
-			onPlayerAdded(player)
-		end
-
-		-- เพิ่มผู้เล่นที่เข้ามาใหม่
-		Players.PlayerAdded:Connect(onPlayerAdded)
-
-		-- ลบยานอวกาศเมื่อผู้เล่นออกจากเกม
-		Players.PlayerRemoving:Connect(function(player)
-			local spaceship = spaceshipManager:GetPlayerSpaceship(player)
-			if spaceship then
-				spaceshipManager:DestroySpaceship(spaceship)
+		-- Wait for player's character to spawn
+		player.CharacterAdded:Connect(function(character)
+			-- Teleport character to spaceship when they spawn
+			local spawnLocation = spaceship:FindFirstChild("SpawnLocation")
+			if spawnLocation then
+				-- Wait a short time to ensure character is fully loaded
+				task.wait(0.5)
+				character:PivotTo(spawnLocation.CFrame)
 			end
 		end)
 	end
 
-	-- เรียกใช้ฟังก์ชั่นเริ่มเกม
-	onGameStart()
+	-- Function to handle player leaving
+	local function onPlayerRemoving(player)
+		-- We don't remove the spaceship anymore as per requirement
+		-- Just leaving this function in case we need to do cleanup of other resources
+		-- The spaceship will remain in the game
+	end
 
-	return {
-		CreateSpaceship = CreateSpaceship,
-		CreateSpaceshipManager = CreateSpaceshipManager
-	}
+	-- Connect player events
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+	-- Handle the remote event for manual spawning (keeping this for backward compatibility)
+	SpawnSpaceshipEvent.OnServerEvent:Connect(function(player)
+		SpawnSpaceship(player)
+	end)
+
+	-- For players already in the game when script loads
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(function()
+			onPlayerAdded(player)
+		end)
+	end
+
+	-- Optional: Create a cleanup function if server is shutting down
+	game:BindToClose(function()
+		-- Any cleanup code if needed when server shuts down
+	end)
+end
